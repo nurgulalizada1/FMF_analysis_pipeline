@@ -1,0 +1,40 @@
+name: checks
+
+# Runs lint, the full test suite and the synthetic demonstration on every push
+# to any branch and on every pull request, so a release branch is checked
+# without being merged into main.
+#
+# CI never has access to study data or to the private study parameters. The
+# integration tests and the demonstration run all nine stages on synthetic
+# data generated inside the job. No artifacts are uploaded.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install pinned dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-lock-py${{ matrix.python-version }}.txt
+          pip install --no-deps -e .
+      - name: Lint
+        run: ruff check src scripts tests
+      - name: Tests
+        run: pytest -q
+      - name: Synthetic demonstration, run twice, deterministic outputs
+        run: make demo-check
