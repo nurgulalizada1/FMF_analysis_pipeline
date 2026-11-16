@@ -1,0 +1,3 @@
+variant;infevers_name;hgvs_c;hgvs_p;exon_infevers;rsid;infevers_class;previous_class;comment
+EXAMPLE_VARIANT_1;EXAMPLE_VARIANT_1;c.1A>G;p.(Xaa1Yaa);REGION_1;rs000000001;Pathogenic;;transcribed from the external variant database on YYYY-MM-DD
+EXAMPLE_VARIANT_2;EXAMPLE_VARIANT_2;c.2C>T;p.(Xaa2=);REGION_2;rs000000002;Benign;Likely benign (until YYYY-MM-DD);synonymous

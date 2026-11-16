@@ -1,29 +1,113 @@
-# Virtual environment
-.venv/
+# =============================================================================
+# PRIVACY-FIRST .gitignore
+#
+# This project analyses human genetic data. The repository is public.
+# The policy is DENY BY DEFAULT: data and results are excluded, and anything
+# that becomes public must be un-ignored explicitly after a disclosure review.
+#
+# A .gitignore file is a safeguard, not a guarantee. It only prevents files
+# from being ADDED; it does not remove files that are already tracked, and it
+# does not protect against `git add -f`. See docs/privacy_policy.md.
+# =============================================================================
 
-# Python cache
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
+# --- Data: everything is excluded; only the explanatory README is tracked ----
+data/*
+!data/README.md
+!data/**/.gitkeep
+# Template files carry structure only - no cohort variants, no real values.
+!data/reviewed/
+data/reviewed/*
+!data/reviewed/*.example.csv
+!data/reviewed/*.example.json
+!data/external/
+data/external/*
+!data/external/*.example.csv
 
-# PyCharm
-.idea/
-
-# Jupyter
-.ipynb_checkpoints/
-
-# macOS
-.DS_Store
-
-# Logs
+# --- Results of real-cohort analyses are never tracked -----------------------
+results/
 logs/
 
-# Results (optional)
-results/
+# --- Defence in depth: block by filename pattern anywhere in the tree --------
+# These patterns match intermediate files that carry patient-level information.
+# Patterns naming a particular laboratory's export files or identifier scheme
+# are study-specific, so they belong in the untracked .git/info/exclude of a
+# working copy, not here; see docs/privacy_policy.md.
+# They are restricted to data file extensions so that source modules with
+# similar names (for example src/mefv/patient_builder.py) remain trackable.
+*patient*.csv
+*patient*.tsv
+*patient*.txt
+*patient*.json
+*variants_long*
+*corrections_log*
+*qc_punch_list*
+*high_allele_burden*
+*_identifiable*
+mefv_clean_*
 
-# Figures (optional)
-figures/
+# --- Office documents and PDFs almost always originate from the laboratory ---
+*.xlsx
+*.xls
+*.xlsm
+*.docx
+*.doc
+*.pdf
 
-# Excel temporary files
-~$*.xlsx
+# --- Clinical reports, screenshots and images ---------------------------------
+*report*.pdf
+*Screenshot*
+*screenshot*
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.heic
+
+# --- Completed variant-classification forms (assessor-level judgements) ------
+*_filled.*
+*_completed.*
+*acmg_form_assessor_*
+
+# --- Credentials and local configuration -------------------------------------
+.env
+.env.*
+*.key
+*.pem
+*token*
+*secret*
+credentials*
+config_local.py
+study_parameters*.json
+!study_parameters.example.json
+
+# --- Git transport files and archives can carry whole histories or data ------
+*.bundle
+*.patch
+*.tgz
+*.tar
+*.tar.gz
+*.zip
+*.7z
+PRIVATE_*
+
+# --- Python -------------------------------------------------------------------
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Editors and operating systems --------------------------------------------
+.idea/
+.vscode/
+.DS_Store
+.ipynb_checkpoints/
+~$*

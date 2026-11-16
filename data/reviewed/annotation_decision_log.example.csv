@@ -1,0 +1,2 @@
+﻿variant;column;previous_value;accepted_value;evidence;reason;review_status;review_date;affects_downstream_results
+EXAMPLE_VARIANT_1;speckseq;value as recorded in the external database;value accepted after review;full citation, including table or figure;why the external value was not accepted;accepted | provisional | pending_second_review;YYYY-MM-DD;yes/no, and which outputs change

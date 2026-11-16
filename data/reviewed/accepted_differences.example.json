@@ -1,0 +1,34 @@
+{
+  "_comment": [
+    "Template for data/reviewed/accepted_differences.json, which is private.",
+    "Structure only: the real file quotes values from the private baseline.",
+    "Every field of an accepted difference is required; a cell is accepted only if table, key, column, baseline and current all match."
+  ],
+  "accepted_differences": [
+    {
+      "table": "tableN_example.csv",
+      "key": "EXAMPLE_VARIANT_1",
+      "column": "example_column",
+      "baseline": "old value",
+      "current": "new value",
+      "decision": "the logged decision that produced this difference",
+      "reason": "why the new value is correct",
+      "evidence_status": "provisional | pending_second_review | verified_against_primary_source",
+      "reference": "where the decision and its evidence are recorded"
+    }
+  ],
+  "obsolete_baseline_tables": [
+    {
+      "table": "tableN_old_name.csv",
+      "reason": "why the current pipeline no longer produces it",
+      "verified": "YYYY-MM-DD"
+    }
+  ],
+  "renamed_tables": [
+    {
+      "baseline": "old_name.csv",
+      "current": "new_name.csv",
+      "reason": "why the file was renamed"
+    }
+  ]
+}

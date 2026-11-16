@@ -1,0 +1,46 @@
+# Public-release allowlist.
+#
+# Every file tracked in Git must match one of these patterns; anything else
+# fails tests/test_public_release.py. Patterns use fnmatch syntax and are
+# matched against the path relative to the repository root.
+#
+# Research outputs: none are approved for publication. Tables, figures and
+# classification material built from study data are not tracked and are
+# excluded below by omission. See docs/public_release.md before adding any.
+
+# --- repository metadata and tooling
+.gitignore
+.github/workflows/ci.yml
+Makefile
+pyproject.toml
+requirements.txt
+requirements-dev.txt
+requirements-lock-py3.11.txt
+requirements-lock-py3.13.txt
+release_allowlist.txt
+
+# --- documentation
+README.md
+docs/*.md
+data/README.md
+
+# --- software
+src/mefv/*.py
+scripts/[0-9][0-9]_*.py
+scripts/run_pipeline.py
+scripts/check_regression.py
+scripts/compare_manifests.py
+scripts/make_synthetic_data.py
+scripts/check_clean_clone.sh
+
+# --- tests
+tests/*.py
+tests/open_audit/sitecustomize.py
+
+# --- templates with placeholder values only, and directory placeholders
+study_parameters.example.json
+data/external/*.example.csv
+data/reviewed/*.example.csv
+data/reviewed/*.example.json
+data/*/.gitkeep
+results/.gitkeep

@@ -1,0 +1,84 @@
+{
+  "_comment": [
+    "Template for study_parameters.json, which is private and excluded by .gitignore.",
+    "Every value below is a placeholder, not a real study setting. Each key is",
+    "described in docs/configuration.md. The pipeline validates the file and stops",
+    "with an error naming any missing or malformed entry; there are no defaults."
+  ],
+  "study_design": {
+    "periods": {
+      "primary": {
+        "label": "PERIOD_A",
+        "first_year": 2000,
+        "last_year": 2004
+      },
+      "sensitivity": {
+        "label": "PERIOD_B",
+        "first_year": 2005,
+        "last_year": 2009
+      }
+    },
+    "panel_regions": [
+      "REGION_1",
+      "REGION_2",
+      "REGION_3"
+    ],
+    "assays": {
+      "panel": "ASSAY_PANEL",
+      "extended": "ASSAY_EXTENDED"
+    },
+    "assay_inference": {
+      "until_year": 2002,
+      "assay": "ASSAY_PANEL",
+      "source_label": "inferred_from_laboratory_statement"
+    }
+  },
+  "reference_data": {
+    "population_frequencies_version": null
+  },
+  "expected_cohort_size": 0,
+  "id_prefix": "EXAMPLE_",
+  "id_width": 3,
+  "cohort_label": "COHORT",
+  "assay_overrides": {},
+  "variant_groups": {
+    "synonymous": [
+      "EXAMPLE_SYN_1"
+    ],
+    "benign_common": [
+      "EXAMPLE_BENIGN"
+    ],
+    "unverified": [],
+    "block_synonymous": [
+      "EXAMPLE_SYN_1"
+    ]
+  },
+  "linkage_plan": {
+    "primary_pair": [
+      "EXAMPLE_BENIGN",
+      "EXAMPLE_VARIANT_1"
+    ],
+    "haplotype_blocks": {
+      "block 1": [
+        "EXAMPLE_SYN_1",
+        "EXAMPLE_SYN_2"
+      ]
+    },
+    "cross_locus_pairs": {
+      "EXAMPLE_SYN_1": [
+        "EXAMPLE_BENIGN",
+        "EXAMPLE_VARIANT_1"
+      ]
+    }
+  },
+  "nomenclature_fixes": {
+    "EXAMPLE_TYPO": "EXAMPLE_VARIANT_1"
+  },
+  "nomenclature_fix_notes": {
+    "EXAMPLE_TYPO": "why the label in the records is wrong, and the evidence"
+  },
+  "affinity_comparison_variants": [
+    "EXAMPLE_BENIGN",
+    "EXAMPLE_VARIANT_2"
+  ]
+}

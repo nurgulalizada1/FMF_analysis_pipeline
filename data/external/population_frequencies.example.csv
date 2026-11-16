@@ -1,0 +1,7 @@
+﻿# Template for data/external/population_frequencies.csv (private). Placeholder values.
+# source      : the database the values were transcribed from
+# version     : the database release
+# retrieved   : when the values were obtained
+variant;mid;nfe;fin;asj;sas;eas;afr;amr;rmi;ami;glob;grpmax;hom;xx;xy;revel;cadd;cv;stars
+EXAMPLE_VARIANT_1;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;Pathogenic;2
+EXAMPLE_VARIANT_2;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;Benign;1
