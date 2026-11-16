@@ -1,29 +1,7 @@
-biopython==1.87
-certifi==2026.6.17
-charset-normalizer==3.4.7
-contourpy==1.3.3
-cycler==0.12.1
-et_xmlfile==2.0.0
-fonttools==4.63.0
-idna==3.18
-kiwisolver==1.5.0
-matplotlib==3.11.0
-narwhals==2.22.1
-networkx==3.6.1
-numpy==2.5.0
-openpyxl==3.1.5
-packaging==26.2
-pandas==3.0.3
-patsy==1.0.2
-pillow==12.2.0
-plotly==6.8.0
-pyparsing==3.3.2
-python-dateutil==2.9.0.post0
-requests==2.34.2
-scipy==1.18.0
-seaborn==0.13.2
-six==1.17.0
-statsmodels==0.14.6
-tqdm==4.68.3
-urllib3==2.7.0
-xlsxwriter==3.2.9
+# Minimum runtime requirements. Exact versions used for the recorded analysis
+# are pinned per Python version in requirements-lock-py3.11.txt and
+# requirements-lock-py3.13.txt.
+numpy>=1.26
+pandas>=2.1
+scipy>=1.11
+matplotlib>=3.8

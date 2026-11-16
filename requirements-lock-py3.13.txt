@@ -1,0 +1,22 @@
+# Fully pinned environment for Python 3.13, including test tools and transitive
+# dependencies. CI installs exactly this file; the clean-clone check uses it too.
+# Regenerate: create a fresh Python 3.13 venv, install the pins below, pip freeze.
+# The Python 3.13 pins are the versions with which the study-data checks were run.
+contourpy==1.4.0
+cycler==0.12.1
+fonttools==4.68.0
+iniconfig==2.3.1
+kiwisolver==1.5.1
+matplotlib==3.11.2
+numpy==2.5.3
+packaging==26.3
+pandas==3.0.5
+pillow==13.0.0
+pluggy==1.7.0
+Pygments==2.21.0
+pyparsing==3.3.3
+pytest==9.1.1
+python-dateutil==4.0.0
+ruff==0.17.5
+scipy==1.18.1
+tzdata==2026.6

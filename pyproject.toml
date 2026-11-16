@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mefv"
+version = "0.1.0"
+description = "Reproducible analysis code for MEFV variant data in familial Mediterranean fever"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Nurgul Alizada" }]
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "scipy>=1.11",
+    "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "ruff>=0.4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "integration: runs the nine pipeline stages end to end on synthetic data (slower)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# B905: zip() without strict=. The migrated analysis code relies on the default
+# behaviour; adding the argument is deferred so that migration cannot change a
+# result. Tracked in docs/development_status.md.
+ignore = ["B905"]
+
+[tool.ruff.lint.per-file-ignores]
+# The analysis stages are migrated code. They are linted for genuine defects
+# (F, B) but not reformatted, because reformatting migrated analysis code
+# risks changing a result. Style cleanup happens when the stages are
+# refactored into library modules; see docs/development_status.md.
+"scripts/*" = [
+    "E401", "E402", "E501", "E702", "E731", "I001", "F401",
+    # E741: a one-letter name used as a bar-chart offset in a plotting loop.
+    "E741",
+    # B023: a helper defined and called inside the same loop iteration, so the
+    # late-binding warning does not apply here. Reviewed, not a defect.
+    "B023",
+]
