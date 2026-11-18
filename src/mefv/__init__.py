@@ -7,6 +7,7 @@ analysis stages live in ``scripts/`` and import from here.
 from mefv import annotation
 from mefv.statistics import (
     bh_fdr,
+    bootstrap_dprime,
     em_haplotypes,
     fmt_ci,
     fmt_p,
@@ -14,14 +15,18 @@ from mefv.statistics import (
     ld_stats,
     wilson_ci,
 )
-from mefv.utils import DOSE, genotype_vector, load, read_csv
+from mefv.utils import DOSE, allele_dose, genotype_vector, load, read_csv, require_released
+from mefv.validation import DataIntegrityError
 
 __version__ = "0.1.0"
 
 __all__ = [
     "DOSE",
+    "DataIntegrityError",
+    "allele_dose",
     "annotation",
     "bh_fdr",
+    "bootstrap_dprime",
     "em_haplotypes",
     "fmt_ci",
     "fmt_p",
@@ -30,5 +35,6 @@ __all__ = [
     "ld_stats",
     "load",
     "read_csv",
+    "require_released",
     "wilson_ci",
 ]

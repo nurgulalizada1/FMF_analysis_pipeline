@@ -26,6 +26,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from mefv.disclosure import text as _n
+
 ANCESTRY_GROUPS = ("mid", "nfe", "fin", "asj", "sas", "eas", "afr", "amr", "rmi", "ami")
 
 #: Required columns, in order.
@@ -115,7 +117,7 @@ def load_population_frequencies(
         raise ReferenceDataError(f"{path}: empty variant label")
     dup = sorted(df.variant[df.variant.duplicated()].unique())
     if dup:
-        raise ReferenceDataError(f"{path}: {len(dup)} duplicated variant label(s)")
+        raise ReferenceDataError(f"{path}: {_n(len(dup))} duplicated variant label(s)")
 
     for c in NUMERIC_COLUMNS:
         raw = df[c].str.strip()
@@ -123,12 +125,12 @@ def load_population_frequencies(
         bad = raw.ne("") & num.isna()
         if bad.any():
             raise ReferenceDataError(
-                f"{path}: column {c!r} has {int(bad.sum())} non-numeric value(s)")
+                f"{path}: column {c!r} has {_n(int(bad.sum()))} non-numeric value(s)")
         df[c] = num
     for c in FREQUENCY_COLUMNS:
         out_of_range = df[c].notna() & ~df[c].between(0, 1)
         if out_of_range.any():
             raise ReferenceDataError(
-                f"{path}: column {c!r} has {int(out_of_range.sum())} frequency value(s) "
+                f"{path}: column {c!r} has {_n(int(out_of_range.sum()))} frequency value(s) "
                 "outside [0, 1]")
     return df, provenance

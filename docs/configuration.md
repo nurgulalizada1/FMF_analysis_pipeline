@@ -47,6 +47,7 @@ the two assay labels differ; `assay_inference.assay` is one of them.
 | `expected_cohort_size` | number of individuals stage 01 must produce; a different count stops the stage |
 | `id_prefix`, `id_width` | identifier scheme: prefix and zero-padding of record numbers |
 | `assay_overrides` | `{record id: assay}` for assays the laboratory confirmed individually |
+| `restored_individuals` | optional `{"coverage_confirmed": bool}`. Individuals present only in the method table are restored with an unconfirmed testing record and the status `undetermined` (excluded from every eligible denominator). Set `coverage_confirmed` to `true` only after the laboratory has confirmed that they were tested for the panel regions and that no variant was found; they are then restored as tested, not detected. See [`eligibility.md`](eligibility.md) |
 | `nomenclature_fixes` | `{label as recorded: correct label}` for confirmed transcription errors |
 | `nomenclature_fix_notes` | `{label as recorded: justification}` |
 

@@ -26,15 +26,25 @@ records, the optional inference rule (`study_design.assay_inference`) fills it
 from a laboratory statement. Such values are labelled as inferred in the
 `assay_source` column and must be reported as a statement, not as data.
 
-**Panel restriction.** Treating an individual with no recorded variant as
-homozygous reference is valid only for regions tested in every individual.
-Cohort-wide tables are therefore restricted to the configured panel regions,
-and variants outside them are reported separately. The resulting spectrum is a
-panel-restricted spectrum.
+**Eligibility depends on the laboratory record.** Treating an individual with
+no recorded variant as reference is valid only for regions the individual was
+tested for. The pipeline uses `exons_tested` for this and counts only tested
+individuals in each denominator ([`eligibility.md`](eligibility.md)). Individuals
+with a missing or malformed record are *undetermined* and are excluded from
+denominators; they are neither assumed tested nor assumed negative. Panel-wide
+analyses use only individuals tested for every panel region, so they describe a
+panel-restricted spectrum. The pipeline cannot verify that a recorded region
+was sequenced well enough to exclude a variant.
 
-**Records without a result field** are counted as "no variant detected" by
-the build stage. This is an assumption to be stated wherever it affects a
-rate.
+**Individuals restored from the method table only** are undetermined until the
+owner confirms their testing record ([`owner_decisions.md`](owner_decisions.md)).
+
+**Period-restricted variants.** Variants recorded completely only in the primary
+period are evaluated within it, using existing metadata only. The pipeline
+does not know the testing history of individual years.
+
+**Records without a result field** are `undetermined`, not "no variant
+detected".
 
 ## Analysis
 
@@ -68,6 +78,26 @@ interchangeably.
 assays cover only some variants, and some variants may have served as
 calibration controls in the assay that classified them. Concordance analyses
 using those variants are supportive at best.
+
+**Bootstrap intervals for D′ are conditional.** Replicates in which either locus
+is monomorphic have no D′ and are dropped (and counted). For rare variants the
+interval is conditional on the replicates in which both loci segregate and can
+be misleadingly narrow ([`statistics.md`](statistics.md)).
+
+**ACMG thresholds are provisional.** The BA1/BS1 frequency thresholds and the
+`n/a` code list were inherited without documented provenance
+([`acmg_provenance.md`](acmg_provenance.md)). The pipeline assigns no
+classification.
+
+**Panel performance is in-sample.** Panels are ranked and evaluated on the same
+individuals; the result is exploratory and optimistic.
+
+**Population-affinity statistics use an unvalidated offset** (1e-6 added before
+taking logarithms) and depend on how many variants have a complete reference.
+
+**Missing reference values are not zero.** A variant without a reference value
+has no enrichment ratio; one with a reference of exactly zero has an undefined
+ratio. Neither is reported as a number.
 
 **Small groups.** Comparisons involving a handful of variants are sensitive to
 the reclassification of one of them and are exploratory.

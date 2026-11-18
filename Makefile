@@ -1,13 +1,14 @@
 PYTHON ?= python3
 
-.PHONY: help install test test-fast lint check clean
+.PHONY: help install test test-fast lint privacy-check check clean
 
 help:
 	@echo "install  install the package and development dependencies"
 	@echo "test     run the test suite"
 	@echo "test-fast run the test suite without the end-to-end integration tests"
 	@echo "lint     run static checks"
-	@echo "check    run lint and tests"
+	@echo "privacy-check  scan the repository for data that should not be published"
+	@echo "check    run lint, the privacy scan and tests"
 	@echo "synthetic generate the artificial demonstration dataset"
 	@echo "demo     generate synthetic data and run the pipeline on it"
 	@echo "demo-check run the demo twice and check its outputs are byte-identical"
@@ -26,7 +27,10 @@ test-fast:
 lint:
 	ruff check src scripts tests
 
-check: lint test
+privacy-check:
+	$(PYTHON) scripts/check_privacy.py
+
+check: lint privacy-check test
 
 clean:
 	rm -rf .pytest_cache .ruff_cache build dist *.egg-info

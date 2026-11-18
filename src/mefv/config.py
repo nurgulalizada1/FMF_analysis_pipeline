@@ -39,6 +39,10 @@ PATIENTS = Path(os.environ.get("MEFV_PATIENTS", PROCESSED_DIR / "patients.csv"))
 VARIANTS = Path(os.environ.get("MEFV_VARIANTS", PROCESSED_DIR / "variants_long.csv"))
 DICTIONARY = Path(os.environ.get("MEFV_DICT", ROOT / "data/external/variant_dictionary.csv"))
 
+#: Stage 01 validation report: rule identifiers and counts only, never a value.
+VALIDATION_REPORT = Path(
+    os.environ.get("MEFV_VALIDATION_REPORT", PROCESSED_DIR / "validation_report.json"))
+
 # Stage 02: generated annotations, and the reviewed overlay it must never write.
 ANNOTATIONS_GENERATED = Path(
     os.environ.get("MEFV_ANNOTATIONS_GENERATED",

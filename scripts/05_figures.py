@@ -30,7 +30,11 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mefv import DOSE, genotype_vector, ld_stats, load, wilson_ci
+from mefv.eligibility import (
+    STATUS_EVALUABLE, cohort_frequency, known_regions, panel_eligible, resolve_region,
+    variant_regions,
+)
+from mefv import allele_dose, genotype_vector, ld_stats, load, wilson_ci
 from mefv.config import GREY, NAVY
 
 _GROUPS = config.variant_groups()
@@ -54,6 +58,16 @@ plt.rcParams.update({
 CM = 1 / 2.54
 
 
+def no_data(ax, message):
+    """A figure with nothing to draw says so, instead of failing or drawing an empty frame."""
+    ax.text(0.5, 0.5, message, transform=ax.transAxes, ha="center", va="center",
+            fontsize=7, color="0.3")
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for sp in ax.spines.values():
+        sp.set_visible(False)
+
+
 def save(fig, name):
     for ext in ("pdf", "png"):
         fig.savefig(f"{FIG}/{name}.{ext}", dpi=300)
@@ -67,6 +81,12 @@ PANEL_EXONS = set(_DESIGN.panel_regions)   # regions tested in every individual
 ASSAY_PANEL, ASSAY_EXT = _DESIGN.panel_assay, _DESIGN.extended_assay
 
 pat, var = load(PAT, VAR, _DESIGN)
+# Figure 1 uses per-variant eligible denominators (src/mefv/eligibility.py). The other
+# figures compare variants across the panel regions, so they use only individuals whose
+# testing record lists every panel region.
+pat_all, var_all = pat, var
+pat = pat[panel_eligible(pat, _DESIGN.panel_regions)].copy()
+var = var[var.patient_id.isin(set(pat.patient_id))].copy()
 var_panel = var[var.exon.isin(PANEL_EXONS)]
 N = len(pat)
 ids_early = list(pat[pat.era == ERA_EARLY].patient_id)
@@ -77,25 +97,36 @@ print("Writing figures to", FIG)
 
 # ---------------------------------------------------------------- Fig 1 ----
 rows = []
-for v, g in var_panel[~var_panel.variant.isin(SYNONYMOUS)].groupby("variant"):
-    het, hom = int((g.zygosity == "Het").sum()), int((g.zygosity == "Hom").sum())
-    al = 2 * hom + het
-    lo, hi = wilson_ci(al, 2 * N)
-    rows.append((v, al / (2 * N), lo, hi))
-f1 = pd.DataFrame(rows, columns=["v", "af", "lo", "hi"]).sort_values("af")
+_obs = variant_regions(var_all)
+_vocab = known_regions(pat_all) | PANEL_EXONS
+_panel_ns = set(var_all[var_all.exon.isin(PANEL_EXONS)
+                        & ~var_all.variant.isin(SYNONYMOUS)].variant)
+for v in sorted(_panel_ns):
+    region, src = resolve_region(v, _obs, None, _vocab)
+    c = cohort_frequency(pat_all, var_all, v, region, src)
+    if c["eligibility_status"] != STATUS_EVALUABLE:
+        continue                      # undefined frequency: not plotted, never plotted as 0
+    lo, hi = wilson_ci(c["alleles"], c["allele_denominator"])
+    rows.append((v, c["allele_freq"], lo, hi, c["n_eligible"]))
+f1 = pd.DataFrame(rows, columns=["v", "af", "lo", "hi", "n_eligible"]).sort_values("af")
+_n_lo, _n_hi = (int(f1.n_eligible.min()), int(f1.n_eligible.max())) if len(f1) else (0, 0)
 f1 = f1[f1.af > 0.002]
 
 fig, ax = plt.subplots(figsize=(9 * CM, 7 * CM))
-y = np.arange(len(f1))
-ax.barh(y, f1.af, height=0.62, color=NAVY, alpha=0.85, zorder=2)
-ax.errorbar(f1.af, y, xerr=[f1.af - f1.lo, f1.hi - f1.af], fmt="none",
-            ecolor="0.25", elinewidth=0.7, capsize=1.8, zorder=3)
-ax.set_yticks(y); ax.set_yticklabels(f1.v)
-ax.set_xlabel(f"Allele frequency (n = {N})")
-ax.set_xlim(0, max(f1.hi) * 1.14)
-ax.grid(axis="x", lw=0.4, color="0.88", zorder=0); ax.set_axisbelow(True)
-for yi, (a, h) in enumerate(zip(f1.af, f1.hi)):
-    ax.text(h + max(f1.hi) * 0.013, yi, f"{a:.3f}", va="center", fontsize=6, color="0.3")
+if f1.empty:
+    no_data(ax, "No variant has an evaluable allele frequency\nabove the plotting threshold")
+else:
+    y = np.arange(len(f1))
+    ax.barh(y, f1.af, height=0.62, color=NAVY, alpha=0.85, zorder=2)
+    ax.errorbar(f1.af, y, xerr=[f1.af - f1.lo, f1.hi - f1.af], fmt="none",
+                ecolor="0.25", elinewidth=0.7, capsize=1.8, zorder=3)
+    ax.set_yticks(y); ax.set_yticklabels(f1.v)
+    ax.set_xlabel("Allele frequency (eligible n = "
+                  + (str(_n_lo) if _n_lo == _n_hi else f"{_n_lo}–{_n_hi}") + ")")
+    ax.set_xlim(0, max(f1.hi) * 1.14)
+    ax.grid(axis="x", lw=0.4, color="0.88", zorder=0); ax.set_axisbelow(True)
+    for yi, (a, h) in enumerate(zip(f1.af, f1.hi)):
+        ax.text(h + max(f1.hi) * 0.013, yi, f"{a:.3f}", va="center", fontsize=6, color="0.3")
 save(fig, "figure1_allele_frequencies")
 
 # ---------------------------------------------------------------- Fig 2 ----
@@ -135,21 +166,24 @@ for i in range(n):
 comb = np.where(np.isnan(Dm), Rm, Dm)
 
 fig, ax = plt.subplots(figsize=(11 * CM, 10 * CM))
-im = ax.imshow(comb, cmap="YlOrBr", vmin=0, vmax=1)
-for i in range(n):
-    for j in range(n):
-        if not np.isnan(comb[i, j]):
-            ax.text(j, i, f"{comb[i,j]:.2f}", ha="center", va="center", fontsize=5.5,
-                    color="white" if comb[i, j] > 0.65 else "0.2")
-ax.set_xticks(range(n)); ax.set_xticklabels(common, rotation=90)
-ax.set_yticks(range(n)); ax.set_yticklabels(common)
-ax.plot([-0.5, n - 0.5], [-0.5, n - 0.5], color="0.35", lw=0.8)
-for s in ax.spines.values():
-    s.set_visible(False)
-ax.tick_params(length=0)
-ax.set_title("Upper triangle |D'|   ·   lower triangle r²", fontsize=8, pad=8)
-cb = fig.colorbar(im, ax=ax, fraction=0.04, pad=0.03)
-cb.outline.set_visible(False); cb.ax.tick_params(labelsize=6, length=2)
+if n < 2:
+    no_data(ax, "Fewer than two variants reach the carrier threshold:\nno pairwise LD to show")
+else:
+    im = ax.imshow(comb, cmap="YlOrBr", vmin=0, vmax=1)
+    for i in range(n):
+        for j in range(n):
+            if not np.isnan(comb[i, j]):
+                ax.text(j, i, f"{comb[i,j]:.2f}", ha="center", va="center", fontsize=5.5,
+                        color="white" if comb[i, j] > 0.65 else "0.2")
+    ax.set_xticks(range(n)); ax.set_xticklabels(common, rotation=90)
+    ax.set_yticks(range(n)); ax.set_yticklabels(common)
+    ax.plot([-0.5, n - 0.5], [-0.5, n - 0.5], color="0.35", lw=0.8)
+    for s_ in ax.spines.values():
+        s_.set_visible(False)
+    ax.tick_params(length=0)
+    ax.set_title("Upper triangle |D'|   ·   lower triangle r²", fontsize=8, pad=8)
+    cb = fig.colorbar(im, ax=ax, fraction=0.04, pad=0.03)
+    cb.outline.set_visible(False); cb.ax.tick_params(labelsize=6, length=2)
 save(fig, "figure3_ld_heatmap")
 
 # ---------------------------------------------------------------- Fig 4 ----
@@ -163,7 +197,7 @@ for v, g in var_panel.groupby("variant"):
     if d and int(d) <= PROT:
         pc.append((int(d), len(g), v, v in SYNONYMOUS))
 pc.sort(key=lambda x: x[0])
-mx = max(c for _, c, _, _ in pc)
+mx = max((c for _, c, _, _ in pc), default=1)
 
 fig, ax = plt.subplots(figsize=(17 * CM, 7.5 * CM))
 for name, s, e, col in DOMAINS:
@@ -196,7 +230,7 @@ save(fig, "figure4_protein_lollipop")
 
 # ---------------------------------------------------------------- Fig 5 ----
 b = var_panel[(~var_panel.variant.isin(SYNONYMOUS)) & (~var_panel.variant.isin(BENIGN_COMMON))].copy()
-b["al"] = b.zygosity.map(DOSE).fillna(1)
+b["al"] = allele_dose(b.zygosity)
 pat["burden"] = pat.patient_id.map(b.groupby("patient_id").al.sum()).fillna(0).astype(int)
 cats, cols = ["0", "1", "2", "≥3"], ["#D3D1C7", "#85B7EB", "#378ADD", "#1F3864"]
 groups = [(ERA_EARLY, pat[pat.era == ERA_EARLY]), (ERA_LATE, pat[pat.era == ERA_LATE]),
@@ -205,8 +239,9 @@ groups = [(ERA_EARLY, pat[pat.era == ERA_EARLY]), (ERA_LATE, pat[pat.era == ERA_
 fig, ax = plt.subplots(figsize=(9.5 * CM, 6.5 * CM))
 ypos = np.arange(len(groups)); left = np.zeros(len(groups))
 for k, (cat, col) in enumerate(zip(cats, cols)):
-    vals = np.array([((s.burden >= 3) if cat == "≥3" else (s.burden == int(cat))).sum()
-                     / len(s) * 100 for _, s in groups])
+    vals = np.array([(((s.burden >= 3) if cat == "≥3" else (s.burden == int(cat))).sum()
+                      / len(s) * 100) if len(s) else np.nan   # an empty group has no percentage
+                     for _, s in groups])
     ax.barh(ypos, vals, left=left, height=0.55, color=col, label=f"{cat} alleles",
             edgecolor="white", lw=0.6)
     for yi, (v, l) in enumerate(zip(vals, left)):
@@ -216,7 +251,7 @@ for k, (cat, col) in enumerate(zip(cats, cols)):
     left += vals
 ax.set_yticks(ypos)
 ax.set_yticklabels([f"{g}\n(n={len(s)})" for g, s in groups])
-ax.set_xlabel("Patients (%)"); ax.set_xlim(0, 100)
+ax.set_xlabel("Patients tested for every panel region (%)"); ax.set_xlim(0, 100)
 ax.legend(frameon=False, ncol=4, loc="upper center", bbox_to_anchor=(0.5, 1.18))
 save(fig, "figure5_allele_burden")
 print("done")

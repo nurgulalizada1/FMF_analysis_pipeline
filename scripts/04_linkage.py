@@ -28,7 +28,10 @@ import pandas as pd
 from scipy import stats
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mefv import DOSE, bh_fdr, genotype_vector, ld_stats, load
+from mefv import allele_dose, bh_fdr, bootstrap_dprime, genotype_vector, load
+from mefv import ld_stats as _ld_stats
+from mefv.disclosure import text as _n
+from mefv.eligibility import panel_eligible
 
 _GROUPS = config.variant_groups()
 SYNONYMOUS = _GROUPS["synonymous"]
@@ -48,6 +51,19 @@ RNG = np.random.default_rng(config.SEED_BOOTSTRAP)
 pat, var = load(PAT, VAR, _DESIGN)
 var = var[var.exon.isin(PANEL_EXONS)].copy()
 
+# Linkage and burden compare variants across the panel regions, so an absent variant
+# row is read as reference only for individuals whose testing record lists every panel
+# region (src/mefv/eligibility.py). The others are excluded, and counted per stratum.
+pat_all = pat
+pat = pat[panel_eligible(pat, _DESIGN.panel_regions)].copy()
+var = var[var.patient_id.isin(set(pat.patient_id))].copy()
+N_EXCLUDED = len(pat_all) - len(pat)
+_cohort_n = {"early": int((pat_all.era == _DESIGN.primary.label).sum()),
+             "late": int((pat_all.era == _DESIGN.sensitivity.label).sum()),
+             "panel": int((pat_all.assay == _DESIGN.panel_assay).sum()),
+             "ext": int((pat_all.assay == _DESIGN.extended_assay).sum()),
+             "all": len(pat_all)}
+
 ids_all = list(pat.patient_id)
 ids_early = list(pat[pat.era == ERA_EARLY].patient_id)
 ids_late = list(pat[pat.era == ERA_LATE].patient_id)
@@ -59,46 +75,62 @@ def gv(v, ids):
     return genotype_vector(var, v, ids)
 
 
-def bootstrap_dprime(gA, gB, n_boot=config.BOOTSTRAP_REPLICATES):
-    g = np.array(list(zip(gA, gB)))
-    n = len(g)
-    vals = []
-    for _ in range(n_boot):
-        s = g[RNG.integers(0, n, n)]
-        r = ld_stats(s[:, 0].tolist(), s[:, 1].tolist())
-        if not np.isnan(r["Dprime"]):
-            vals.append(r["Dprime"])
-    return tuple(np.percentile(vals, [2.5, 97.5])) if vals else (np.nan, np.nan)
+_EM_FITS = []   # convergence flag of every EM fit behind a reported D'/r2 (not run = None)
+
+
+def ld_stats(gA, gB):
+    r = _ld_stats(gA, gB)
+    _EM_FITS.append(r["converged"])
+    return r
+
+
+def em_flag(r):
+    """EM convergence as reported in the tables: True, False, or 'not_run' (no individuals)."""
+    return "not_run" if r["converged"] is None else bool(r["converged"])
+
+
+def bootstrap_ci(gA, gB):
+    """Percentile CI for D' with valid/dropped replicate counts (mefv.bootstrap_dprime)."""
+    return bootstrap_dprime(gA, gB, config.BOOTSTRAP_REPLICATES, RNG)
 
 
 # ------------------------------------------- A. the primary variant pair ----
-def pair_report(vA, vB, ids, label, boot=True):
+def pair_report(vA, vB, ids, label, n_cohort=None, boot=True):
     gA, gB = gv(vA, ids), gv(vB, ids)
     r = ld_stats(gA, gB)
     a = sum(1 for x, y in zip(gA, gB) if x > 0 and y > 0)
     b = sum(1 for x, y in zip(gA, gB) if x > 0 and y == 0)
     c = sum(1 for x, y in zip(gA, gB) if x == 0 and y > 0)
     d = sum(1 for x, y in zip(gA, gB) if x == 0 and y == 0)
-    _, p = stats.fisher_exact([[a, b], [c, d]])
-    lo, hi = bootstrap_dprime(gA, gB) if boot else (np.nan, np.nan)
+    p = stats.fisher_exact([[a, b], [c, d]])[1] if ids else np.nan
+    bs = bootstrap_ci(gA, gB) if boot else {"lo": np.nan, "hi": np.nan, "n_requested": 0,
+                                            "n_valid": 0, "n_dropped": 0}
+    lo, hi = bs["lo"], bs["hi"]
     frac = r["h"]["11"] / r["pB"] if r["pB"] > 0 else np.nan
-    return dict(stratum=label, n=len(ids), freq_A=round(r["pA"], 4),
+    return dict(stratum=label, n=len(ids),
+                n_cohort_in_stratum=n_cohort if n_cohort is not None else len(ids),
+                n_excluded_not_eligible=(n_cohort - len(ids)) if n_cohort is not None else 0,
+                freq_A=round(r["pA"], 4),
                 freq_B=round(r["pB"], 4),
                 hap_AB=round(r["h"]["11"], 4), hap_Ab=round(r["h"]["10"], 4),
                 hap_aB=round(r["h"]["01"], 4), hap_ab=round(r["h"]["00"], 4),
                 Dprime=round(r["Dprime"], 4),
                 Dprime_95CI=f"{lo:.3f}–{hi:.3f}" if not np.isnan(lo) else "",
+                boot_replicates_requested=bs["n_requested"],
+                boot_replicates_valid=bs["n_valid"], boot_replicates_dropped=bs["n_dropped"],
+                em_converged=em_flag(r),
                 r2=round(r["r2"], 4), carriers_both=a, A_only=b, B_only=c,
-                neither=d, fisher_p=f"{p:.2e}",
+                neither=d, fisher_p=f"{p:.2e}" if not np.isnan(p) else "",
                 pct_B_alleles_on_A_background=round(frac * 100, 1))
 
 
-strata = [(f"{ERA_EARLY} (primary)", ids_early),
-          (f"{ERA_LATE} (sensitivity)", ids_late),
-          (ASSAY_PANEL, ids_panel_assay), (ASSAY_EXT, ids_ext_assay),
-          ("full cohort", ids_all)]
+strata = [(f"{ERA_EARLY} (primary)", ids_early, _cohort_n["early"]),
+          (f"{ERA_LATE} (sensitivity)", ids_late, _cohort_n["late"]),
+          (ASSAY_PANEL, ids_panel_assay, _cohort_n["panel"]),
+          (ASSAY_EXT, ids_ext_assay, _cohort_n["ext"]),
+          ("full cohort", ids_all, _cohort_n["all"])]
 _A, _B = _PLAN["primary_pair"]
-t4 = pd.DataFrame([pair_report(_A, _B, ids, lab) for lab, ids in strata])
+t4 = pd.DataFrame([pair_report(_A, _B, ids, lab, n_cohort=nc) for lab, ids, nc in strata])
 t4.insert(0, "variant_pair", f"{_A} / {_B}")
 t4.to_csv(f"{OUT}/table4_primary_pair.csv", sep=";", index=False, encoding="utf-8-sig")
 
@@ -117,6 +149,11 @@ ct_early.to_csv(f"{OUT}/table4b_crosstab_primary.csv", sep=";", encoding="utf-8-
 
 
 # ------------------------------------------- B. pairwise associations -------
+_PW_COLUMNS_RAW = ["cohort", "variant_A", "variant_B", "carriers_A", "carriers_B", "both",
+                   "Dprime", "r2", "em_converged", "fisher_p_raw", "perfect_cooccurrence"]
+_PW_COLUMNS = [c for c in _PW_COLUMNS_RAW if c != "fisher_p_raw"] + ["fdr_q", "fisher_p"]
+
+
 def pairwise(ids, variants, label, min_carriers=2):
     rows = []
     for vA, vB in itertools.combinations(sorted(variants), 2):
@@ -133,9 +170,12 @@ def pairwise(ids, variants, label, min_carriers=2):
                          carriers_A=a + b, carriers_B=a + c, both=a,
                          Dprime=round(r["Dprime"], 4) if not np.isnan(r["Dprime"]) else "",
                          r2=round(r["r2"], 4) if not np.isnan(r["r2"]) else "",
+                         em_converged=em_flag(r),
                          fisher_p_raw=p,
                          perfect_cooccurrence=(a == a + b == a + c)))
-    df = pd.DataFrame(rows)
+    df = pd.DataFrame(rows, columns=_PW_COLUMNS_RAW)
+    if not len(df):
+        return pd.DataFrame(columns=_PW_COLUMNS)    # same columns as a non-empty result
     if len(df):
         df["fdr_q"] = bh_fdr(df.fisher_p_raw.values)
         df["fisher_p"] = df.fisher_p_raw.map(lambda x: f"{x:.2e}")
@@ -166,29 +206,30 @@ for name, members in blocks.items():
         rows.append(dict(comparison=f"within {name}", variant_A=vA, variant_B=vB,
                          discordant_genotypes=sum(1 for x, y in zip(gA, gB) if x != y),
                          n=len(ids_early), Dprime=round(r["Dprime"], 4),
-                         r2=round(r["r2"], 4)))
+                         r2=round(r["r2"], 4), em_converged=em_flag(r)))
 for vA, _partners in _PLAN["cross_locus_pairs"].items():
     for vB in _partners:
         r = ld_stats(gv(vA, ids_early), gv(vB, ids_early))
         rows.append(dict(comparison="benign block vs ascertained locus",
                          variant_A=vA, variant_B=vB, discordant_genotypes="",
                          n=len(ids_early), Dprime=round(r["Dprime"], 4),
-                         r2=round(r["r2"], 4)))
+                         r2=round(r["r2"], 4), em_converged=em_flag(r)))
 t_blocks = pd.DataFrame(rows)
 t_blocks.to_csv(f"{OUT}/supp_haplotype_blocks.csv", sep=";", index=False, encoding="utf-8-sig")
 
 
 # ------------------------------------------- E. high allele burden ----------
 b = var[(~var.variant.isin(SYNONYMOUS)) & (~var.variant.isin(BENIGN_COMMON))].copy()
-b["alleles"] = b.zygosity.map(DOSE).fillna(1)
+b["alleles"] = allele_dose(b.zygosity)
 burden = b.groupby("patient_id").alleles.sum()
 high = burden[burden >= 3].sort_values(ascending=False)
+_HIGH_COLUMNS = ["patient_id", "year", "assay", "total_alleles", "genotype"]
 t_high = pd.DataFrame([
     dict(patient_id=pid, year=int(b[b.patient_id == pid].year.iloc[0]),
          assay=b[b.patient_id == pid].assay.iloc[0], total_alleles=int(high[pid]),
          genotype="; ".join(f"{r.variant}({r.zygosity})"
                             for _, r in b[b.patient_id == pid].iterrows()))
-    for pid in high.index])
+    for pid in high.index], columns=_HIGH_COLUMNS)    # fixed columns: also valid when empty
 t_high.to_csv(f"{OUT}/supp_high_allele_burden.csv", sep=";", index=False, encoding="utf-8-sig")
 
 
@@ -196,7 +237,10 @@ t_high.to_csv(f"{OUT}/supp_high_allele_burden.csv", sep=";", index=False, encodi
 pd.set_option("display.width", 220)
 print(f"=== A. {_A} × {_B} ===")
 print(t4[["stratum", "n", "freq_A", "freq_B", "hap_AB", "hap_aB", "Dprime",
-          "Dprime_95CI", "r2", "fisher_p", "pct_B_alleles_on_A_background"]].to_string(index=False))
+          "Dprime_95CI", "boot_replicates_valid", "boot_replicates_dropped", "r2", "fisher_p",
+          "pct_B_alleles_on_A_background"]].to_string(index=False))
+print(f"(individuals excluded from these analyses: record does not list every panel "
+      f"region or is unusable: {N_EXCLUDED})")
 
 print(f"\n--- genotype cross-tabulation, {ERA_EARLY} (n={len(ids_early)}) ---")
 print(ct_early.to_string())
@@ -212,6 +256,11 @@ print(cands[cols].to_string(index=False) if len(cands) else "  none")
 print(f"\n=== D. haplotype blocks, {ERA_EARLY} ===")
 print(t_blocks.to_string(index=False))
 
-print(f"\n=== E. patients with ≥3 FMF-associated alleles (n={len(t_high)}) ===")
-print(t_high.to_string(index=False))
+print(f"\n=== E. patients with ≥3 FMF-associated alleles (n={_n(len(t_high))}) ===")
+# Counts only: the identifiers are in the supplementary table, not in the console log.
+print(t_high.drop(columns=["patient_id", "genotype"]).to_string(index=False))
+_fits = [c for c in _EM_FITS if c is not None]
+print(f"\nEM convergence: {_n(sum(1 for c in _fits if c is False))} of {len(_fits)} haplotype "
+      "estimates behind the D'/r2 values above did not converge "
+      "(column em_converged in tables 4, supp_pairwise_associations and supp_haplotype_blocks)")
 print(f"\nWritten to {OUT}/")

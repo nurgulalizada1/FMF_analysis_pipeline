@@ -95,12 +95,12 @@ def test_loader_assigns_periods_from_the_design_and_rejects_uncovered_years(tmp_
     var = pd.DataFrame({"patient_id": ["b"], "variant": ["V"], "year_requested": ["115"]})
     pat.to_csv(tmp_path / "p.csv", sep=";", index=False)
     var.to_csv(tmp_path / "v.csv", sep=";", index=False)
-    p, v = load(tmp_path / "p.csv", tmp_path / "v.csv", d)
+    p, v = load(tmp_path / "p.csv", tmp_path / "v.csv", d, allow_unreported=True)
     assert list(p.era) == ["P-A", "P-B"] and list(v.era) == ["P-B"]
     pat.loc[0, "year_requested"] = "150"
     pat.to_csv(tmp_path / "p.csv", sep=";", index=False)
     with pytest.raises(StudyParameterError):
-        load(tmp_path / "p.csv", tmp_path / "v.csv", d)
+        load(tmp_path / "p.csv", tmp_path / "v.csv", d, allow_unreported=True)
 
 
 def test_missing_parameters_file_has_a_clear_error(tmp_path):

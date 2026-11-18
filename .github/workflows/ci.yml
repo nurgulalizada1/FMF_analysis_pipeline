@@ -34,6 +34,8 @@ jobs:
           pip install --no-deps -e .
       - name: Lint
         run: ruff check src scripts tests
+      - name: Privacy scan (built-in rules; the private denylist is never available to CI)
+        run: python scripts/check_privacy.py --tracked
       - name: Tests
         run: pytest -q
       - name: Synthetic demonstration, run twice, deterministic outputs

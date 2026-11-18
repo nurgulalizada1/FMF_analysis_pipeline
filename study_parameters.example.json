@@ -41,6 +41,7 @@
   "id_width": 3,
   "cohort_label": "COHORT",
   "assay_overrides": {},
+  "restored_individuals": {"coverage_confirmed": false},
   "variant_groups": {
     "synonymous": [
       "EXAMPLE_SYN_1"

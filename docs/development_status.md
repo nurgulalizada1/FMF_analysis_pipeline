@@ -1,6 +1,6 @@
 # Development status
 
-Last updated: 2026-11-16 (second revision)
+Last updated: 2026-11-17 (third revision: remediation, uncommitted)
 
 This file separates what is implemented from what is not, so the repository is
 never read as more complete than it is. It quotes no study results or study
@@ -22,16 +22,22 @@ settings; those live in private files.
 | `reference.py` | 🧪 | Population reference table: schema, provenance header, value checks |
 | `annotation.py` | 🧪 | Annotation schema, merge rules, decision-log validation |
 | `statistics.py` | 🧪 | Wilson interval, exact Hardy-Weinberg, EM haplotypes, D′/r², Benjamini-Hochberg |
-| `utils.py` | 🧪 | Two-table loading with period assignment, genotype encoding |
+| `utils.py` | 🧪 | Two-table loading with period assignment, genotype encoding (rejects unrecognised zygosity) |
+| `validation.py` | 🧪 | Rule-based input validation with stable IDs, count-only reports, blocking policy; see `docs/validation.md` |
+| `eligibility.py` | 🧪 | Eligibility-aware denominators and the four testing statuses; see `docs/eligibility.md` |
+| `comparison.py` | 🧪 | Reference comparison that keeps zero, missing, undefined and not-evaluable apart; provisional BA1/BS1 thresholds |
+| `acmg.py` | 🧪 | ACMG code list, provisional configuration and its provenance table; assigns no classification |
+| `privacy.py` | 🧪 | Repository privacy scanner and private-denylist loader; reports paths, rule IDs and counts only |
 
 ## Analysis stages and tools — `scripts/`
 
 | Script | Status | Notes |
 | --- | --- | --- |
-| `01_build_dataset.py` … `09_classification_package.py` | 🧪 ✅ | Each runs end to end on synthetic data under test, and ran on the study data |
+| `01_build_dataset.py` … `09_classification_package.py` | 🧪 | Each runs end to end on synthetic data under test. They ran on the study data in their earlier form; **the third-revision changes have not been run on study data** |
 | `run_pipeline.py` | 🧪 ✅ | Runs the stages; writes a manifest with a deterministic and an execution section; `--clean` |
 | `check_regression.py` | 🧪 ✅ | Cell- and value-level comparison with an immutable baseline |
 | `compare_manifests.py` | 🧪 | Compares the deterministic sections of two run manifests |
+| `check_privacy.py` | 🧪 | Scans tracked, staged or generated files for material that should not be published; optional private denylist outside the repository |
 | `make_synthetic_data.py` | 🧪 | Invented demonstration data; reads no file |
 | `check_clean_clone.sh` | — | Verifies a committed branch from a fresh clone and virtual environment |
 
@@ -57,6 +63,56 @@ Recorded rather than silently changed.
    `make test-fast` skips them.
 4. **Python 3.12 is not tested.** CI and the clean-clone check cover 3.11 and
    3.13.
+5. **GitHub Actions are not pinned by commit SHA.** See `reproducibility.md`.
+6. **The privacy scanner is pattern-based.** A clean result is not a guarantee
+   (`privacy_policy.md`). CI cannot use the private denylist.
+7. **Unresolved owner decisions** are listed in `owner_decisions.md`; the
+   software applies conservative fallbacks and decides none of them.
+8. **Not validated on study data.** Nothing from the third revision has been
+   run on the private data; no real-study result has been validated by it.
+
+## Changes in the third revision (remediation; uncommitted)
+
+- **Input validation** (`validation.py`, stage 01): a catalogue of rules with
+  stable IDs. Fatal, blocking, warning and info severities. Count-only reports.
+  Variant labels differing only by case or whitespace (`V7`), exact duplicates
+  and conflicting genotypes block the run until the owner records an explicit
+  disposition in a private file; acknowledging a rule by name releases nothing
+  (status `acknowledged_unresolved`, no final output). No record is ever
+  normalised, merged or deleted. The disposition is bound to three SHA-256
+  digests (the raw tables, the parsed study parameters, and the validation
+  rule catalogue and its version), so a changed export, setting or rule voids it. A stopped run
+  withdraws the earlier run's processed tables and marks the output directories
+  as not current, and every later stage refuses unreleased tables. (An earlier draft of this revision let an
+  acknowledgement release the run; that was a defect and was corrected in the
+  final audit.)
+- **Eligibility model** (`eligibility.py`): `exons_tested` defines who enters a
+  denominator. Blank or malformed values are undetermined. Frequencies with no
+  eligible individual are NaN. Restored method-only individuals are
+  undetermined until the owner confirms. Period-restricted variants use the
+  primary-period scope. Panel-wide analyses use panel-eligible individuals.
+  This changes numbers: extended-region variants now use their eligible
+  denominators, and panel variants lose the undetermined individual.
+- **Statistical robustness**: bootstrap D′ reports valid and dropped replicates;
+  EM reports convergence and rejects invalid dosages; BH-FDR ignores missing
+  p-values; empty-input and empty-group cases return NaN rather than zero or an
+  error; reference comparison distinguishes zero, missing, undefined and not
+  evaluable; missing `grpmax` is `not_evaluable`; reference provenance is read
+  from the reference file instead of being hard-coded; Table 9 is labelled
+  in-sample and exploratory and reports percentages of eligible individuals.
+- **Privacy scanner and private denylist**, with a CI step.
+- **Finalization hardening** (uncommitted): fail-closed release gate bound to
+  input, parsed-settings and rule-catalogue digests; diagnostic counts of 1-4
+  shown as `<5` in reports, terminal output and JSON (analytical result tables
+  are not suppressed: owner decision 16); duplicate patient-variant rows refused
+  by patient-level genotype code instead of silently overwritten; no truncation
+  or mid-string stripping of patient identifiers; `None`/`NaN`/`pd.NA` handled as
+  missing; privacy scanner without a content-marker exemption, never following
+  symlinks, failing closed on Git or read errors; EM non-convergence and valid
+  bootstrap replicate counts reported; empty-data cases in stages 03, 04, 05 and
+  08 give explicit empty or "no data" outputs. Not validated on study data.
+- **Documentation**: `eligibility.md`, `statistics.md`, `acmg_provenance.md`,
+  `reproducibility.md`, `owner_decisions.md`; updates to the rest.
 
 ## Changes in the second revision
 

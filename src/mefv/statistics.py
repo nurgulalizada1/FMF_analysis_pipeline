@@ -24,6 +24,8 @@ from collections.abc import Sequence
 import numpy as np
 from scipy import stats
 
+from mefv.disclosure import text as _n
+
 
 def wilson_ci(k: int, n: int, alpha: float = 0.05) -> tuple[float, float]:
     """Wilson score interval for a binomial proportion."""
@@ -67,11 +69,35 @@ def hwe_exact(n_hom_alt: int, n_het: int, n_hom_ref: int) -> float:
     return float(min(1.0, probs[probs <= probs[h] * (1 + 1e-9)].sum()))
 
 
+def _check_dosage(g: Sequence[int], name: str) -> None:
+    bad = [x for x in g if x not in (0, 1, 2)]
+    if bad:
+        raise ValueError(f"{name}: {_n(len(bad))} genotype value(s) outside {{0, 1, 2}}")
+
+
 def em_haplotypes(
     gA: Sequence[int], gB: Sequence[int], iters: int = 1000, tol: float = 1e-12
 ) -> dict[str, float]:
     """EM estimation of two-locus haplotype frequencies from unphased data."""
+    return em_haplotypes_info(gA, gB, iters, tol)[0]
+
+
+def em_haplotypes_info(
+    gA: Sequence[int], gB: Sequence[int], iters: int = 1000, tol: float = 1e-12
+) -> tuple[dict[str, float], bool]:
+    """EM estimate of two-locus haplotype frequencies, and whether it converged.
+
+    Genotypes must be 0, 1 or 2 copies; any other value raises. ``converged``
+    is False if the iteration limit was reached before the largest change in a
+    frequency fell below ``tol``.
+    """
+    if len(gA) != len(gB):
+        raise ValueError("genotype vectors differ in length")
     n = len(gA)
+    if n == 0:
+        raise ValueError("no individuals: haplotype frequencies are undefined")
+    _check_dosage(gA, "locus A")
+    _check_dosage(gB, "locus B")
     pA, pB = sum(gA) / (2 * n), sum(gB) / (2 * n)
     h = {"11": pA * pB, "10": pA * (1 - pB),
          "01": (1 - pA) * pB, "00": (1 - pA) * (1 - pB)}
@@ -103,9 +129,9 @@ def em_haplotypes(
         tot = sum(c.values())
         new = {k: v / tot for k, v in c.items()}
         if max(abs(new[k] - h[k]) for k in h) < tol:
-            return new
+            return new, True
         h = new
-    return h
+    return h, False
 
 
 #: Allele frequencies this close to 0 or 1 are treated as monomorphic.
@@ -127,27 +153,72 @@ def ld_stats(gA: Sequence[int], gB: Sequence[int]) -> dict[str, float]:
 
     Returns D, D', r^2, the estimated haplotype frequencies and the two allele
     frequencies. Linkage disequilibrium is undefined when either locus is
-    monomorphic, and the statistics are NaN in that case.
+    monomorphic, and the statistics are NaN in that case. ``converged`` is the EM
+    convergence flag (True/False), or None when there were no individuals and EM was
+    not run; callers must report a False estimate as not converged.
     """
-    h = em_haplotypes(gA, gB)
+    if len(gA) == 0:
+        # No individuals: everything is undefined (NaN), not zero.
+        nan_h = {k: np.nan for k in ("11", "10", "01", "00")}
+        # EM was not run, so "converged" is neither true nor false: None.
+        return dict(D=np.nan, Dprime=np.nan, r2=np.nan, h=nan_h, pA=np.nan, pB=np.nan,
+                    converged=None)
+    h, converged = em_haplotypes_info(gA, gB)
     pA, pB = h["11"] + h["10"], h["11"] + h["01"]
     if _is_fixed(pA) or _is_fixed(pB):
-        return dict(D=np.nan, Dprime=np.nan, r2=np.nan, h=h, pA=pA, pB=pB)
+        return dict(D=np.nan, Dprime=np.nan, r2=np.nan, h=h, pA=pA, pB=pB, converged=converged)
     D = h["11"] - pA * pB
     dmax = min(pA * (1 - pB), (1 - pA) * pB) if D > 0 else min(pA * pB, (1 - pA) * (1 - pB))
     return dict(D=D, Dprime=D / dmax if dmax > 0 else np.nan,
-                r2=D**2 / (pA * (1 - pA) * pB * (1 - pB)), h=h, pA=pA, pB=pB)
+                r2=D**2 / (pA * (1 - pA) * pB * (1 - pB)), h=h, pA=pA, pB=pB,
+                converged=converged)
+
+
+def bootstrap_dprime(
+    gA: Sequence[int], gB: Sequence[int], n_boot: int, rng: np.random.Generator,
+    alpha: float = 0.05,
+) -> dict[str, object]:
+    """Percentile bootstrap interval for D', with the replicate accounting.
+
+    D' is undefined in a replicate in which either locus is monomorphic. Such
+    replicates cannot contribute and are dropped, **and counted**: the interval
+    is then conditional on the replicates in which both loci segregate, which
+    for rare variants is not the same as an interval for the whole sample. No
+    minimum number of valid replicates is imposed (that would be an arbitrary
+    threshold); the caller reports ``n_valid`` and ``n_dropped`` beside the
+    interval so a reader can judge it. With no valid replicate the limits are
+    NaN, not zero.
+    """
+    g = np.array(list(zip(gA, gB, strict=True)))
+    n = len(g)
+    vals: list[float] = []
+    if n:
+        for _ in range(n_boot):
+            s = g[rng.integers(0, n, n)]
+            d = ld_stats(s[:, 0].tolist(), s[:, 1].tolist())["Dprime"]
+            if not np.isnan(d):
+                vals.append(d)
+    lo, hi = (np.percentile(vals, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+              if vals else (np.nan, np.nan))
+    return {"lo": float(lo), "hi": float(hi), "n_requested": n_boot,
+            "n_valid": len(vals), "n_dropped": n_boot - len(vals)}
 
 
 def bh_fdr(pvals: Sequence[float]) -> np.ndarray:
-    """Benjamini-Hochberg adjusted p values."""
+    """Benjamini-Hochberg adjusted p values (missing p values are left missing)."""
     p = np.asarray(pvals, float)
-    n = len(p)
-    order = np.argsort(p)
-    ranked = p[order] * n / (np.arange(n) + 1)
-    ranked = np.minimum.accumulate(ranked[::-1])[::-1]
-    out = np.empty(n)
-    out[order] = np.minimum(ranked, 1.0)
+    out = np.full(len(p), np.nan)
+    finite = np.isfinite(p)
+    if finite.any():
+        # Missing p values stay missing and are not counted among the tests.
+        q = p[finite]
+        n = len(q)
+        order = np.argsort(q)
+        ranked = q[order] * n / (np.arange(n) + 1)
+        ranked = np.minimum.accumulate(ranked[::-1])[::-1]
+        adj = np.empty(n)
+        adj[order] = np.minimum(ranked, 1.0)
+        out[finite] = adj
     return out
 
 

@@ -42,7 +42,13 @@ CM = 1 / 2.54
 NAVY, TEAL, AMBER, GREY = "#1F3864", "#1D9E75", "#BA7517", "#888780"
 
 t = pd.read_csv(f"{TAB}/table6_gnomad_comparison.csv", sep=";", encoding="utf-8-sig")
+# A variant enters the figures only if its cohort frequency is defined (it has eligible
+# individuals) and positive. Undefined frequencies are never drawn as zero.
+_n_undefined = int(t.cohort_af.isna().sum())
 t = t[t.cohort_af > 0].copy()
+print(f"  variants without a defined cohort frequency (not drawn): {_n_undefined}")
+_ref = (", ".join(sorted(set(t.reference_source.astype(str)))),
+        ", ".join(sorted(set(t.reference_version.astype(str)))))
 
 # Classification for colour: the pathogenic and likely pathogenic tier of the
 # variant dictionary, the same classification every other stage uses. (Earlier
@@ -67,6 +73,8 @@ t["tier"] = t.variant.map(tier)
 
 # ---------------------------------------------------------------- Panel A ---
 a = t[np.isfinite(t.x_vs_highest)].sort_values("x_vs_highest")
+print(f"  figure 6a: {len(a)} variant(s) drawn; {len(t) - len(a)} without a defined enrichment "
+      "(reference value missing or zero)")
 fig, ax = plt.subplots(figsize=(9 * CM, 10 * CM))
 y = np.arange(len(a))
 ax.barh(y, a.x_vs_highest, height=0.66, zorder=2,
@@ -75,7 +83,11 @@ ax.axvline(1, color="0.35", lw=0.8, ls="--", zorder=3)
 ax.set_xscale("log")
 ax.set_yticks(y)
 ax.set_yticklabels(a.variant)
-ax.set_xlabel("Cohort allele frequency ÷ highest gnomAD ancestry group")
+_incomplete = int((~a.highest_group_complete.astype(bool)).sum())
+ax.set_xlabel("Cohort allele frequency ÷ highest reference ancestry group\n"
+              "(each variant over its eligible individuals)"
+              + (f"\n{_incomplete} variant(s): highest of the available groups only"
+                 if _incomplete else ""))
 ax.grid(axis="x", lw=0.4, color="0.9", zorder=0)
 ax.set_axisbelow(True)
 ax.set_xlim(0.02, 200)
@@ -117,7 +129,7 @@ cb = fig.colorbar(im, ax=ax, fraction=0.035, pad=0.02)
 cb.set_label("Allele frequency", fontsize=7)
 cb.outline.set_visible(False)
 cb.ax.tick_params(labelsize=6, length=2)
-ax.set_title("Allele frequency: cohort vs gnomAD v4.1.1 ancestry groups",
+ax.set_title(f"Allele frequency: cohort vs reference ancestry groups\n({_ref[0]}, {_ref[1]})",
              fontsize=8, pad=8)
 for ext in ("pdf", "png"):
     fig.savefig(f"{FIG}/figure6b_ancestry_heatmap.{ext}", dpi=300)

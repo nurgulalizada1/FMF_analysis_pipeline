@@ -111,3 +111,11 @@ htmlcov/
 .DS_Store
 .ipynb_checkpoints/
 ~$*
+
+# --- Private owner files: never to be committed --------------------------------
+# The privacy denylist and the owner's disposition record belong OUTSIDE the
+# repository (the tools refuse a path inside it). These patterns are a second
+# line of defence in case one is created here by mistake.
+*denylist*
+owner_disposition*
+*.disposition.json

@@ -4,6 +4,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+from mefv import DataIntegrityError
 from mefv.utils import DOSE, genotype_vector
 
 
@@ -34,11 +35,18 @@ def test_unknown_variant_returns_all_zeros():
     assert genotype_vector(var, "NOT_OBSERVED", ["P1", "P2"]) == [0, 0]
 
 
-def test_unrecognised_zygosity_warns_and_counts_one_copy():
-    """Preserves the original behaviour, but no longer silently."""
+def test_unrecognised_zygosity_is_rejected_not_counted_as_one_copy():
+    """Replaces a test that pinned the old behaviour (count it as one copy, with a warning).
+
+    Counting an unrecognised label as one allele copy was an unapproved
+    interpretation of the data, and it made Table 2 (which ignores such rows)
+    and Table 3 (which counted them) disagree. The label is now rejected, and
+    the message reports how many entries are affected without echoing them.
+    """
     var = make_variants([("P1", "SYN_P01", "???")])
-    with pytest.warns(UserWarning, match="unrecognised zygosity"):
-        assert genotype_vector(var, "SYN_P01", ["P1"]) == [1]
+    with pytest.raises(DataIntegrityError) as exc:
+        genotype_vector(var, "SYN_P01", ["P1"])
+    assert "???" not in str(exc.value)
 
 
 def test_dose_mapping_is_the_documented_one():

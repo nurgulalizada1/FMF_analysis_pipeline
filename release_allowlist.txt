@@ -29,6 +29,7 @@ src/mefv/*.py
 scripts/[0-9][0-9]_*.py
 scripts/run_pipeline.py
 scripts/check_regression.py
+scripts/check_privacy.py
 scripts/compare_manifests.py
 scripts/make_synthetic_data.py
 scripts/check_clean_clone.sh

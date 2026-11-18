@@ -56,6 +56,64 @@ removed. Three mechanisms are relevant here:
    values and identifiers — not only for generic identifier patterns, which
    miss study results that contain no names.
 
+## Automated scan and the private denylist
+
+`scripts/check_privacy.py` (library: `src/mefv/privacy.py`) is a safety net
+behind review, not a substitute for it.
+
+```bash
+python scripts/check_privacy.py                 # tracked files and untracked-not-ignored files
+python scripts/check_privacy.py --tracked       # tracked files only (what CI runs)
+python scripts/check_privacy.py --staged        # what the next commit would add (pre-commit)
+python scripts/check_privacy.py --path results/ # generated outputs, notebooks, any folder
+```
+
+**Built-in rules** (`mefv.privacy.RULES`): files under `data/`, `results/` or
+`logs/` other than documented placeholders; file types that normally carry
+laboratory data (spreadsheets, archives, bundles, patches, databases, images);
+file names suggesting exports, patient files, credentials or private lists;
+e-mail addresses, international telephone numbers, long digit sequences,
+date-of-birth fields, patient-identifier tables, repeated Het/Hom genotype
+columns and credential patterns, and symbolic links. A "SYNTHETIC DATA" banner inside
+a file exempts nothing: real data can carry the same words. Only the documented
+placeholder examples (`data/external/*.example.csv`, `data/reviewed/*.example.csv`) are exempt
+from the two table-shape rules, by path. Symbolic links are reported (`PATH-SYMLINK`) and
+never followed, so a link cannot carry the scan to a file outside the folder it was given.
+E-mail addresses are allowed only for the listed domains and their sub-domains. Binary
+files and files over 20 MB are counted as not scanned. If Git cannot be run, a Git command
+fails, a path does not exist or a file cannot be read, the scan stops with exit status 2:
+it never reports a clean result for files it could not see.
+
+**Private denylist.** Only the data owner knows which strings are sensitive (the
+real identifier scheme, names, laboratory file names, study variant labels).
+Put them in a text file **outside the repository** and point the scanner at it
+with `--denylist PATH` or the environment variable `MEFV_PRIVATE_DENYLIST`.
+One entry per line; `#` starts a comment:
+
+```
+some literal text            # case-insensitive, at least 4 characters
+regex:PATTERN                # a Python regular expression
+sha256:HEX                   # SHA-256 of a lower-cased token, so the list need not hold plain text
+```
+
+The scanner refuses a denylist inside the repository, refuses one that Git
+tracks, and rejects a malformed entry by its line number only. Without a
+denylist it runs the built-in rules and says so; `--require-denylist` makes the
+absence an error. A denylist that was asked for (`--denylist` or the environment
+variable) but does not exist is always an error (exit 2), never a quietly weaker scan. CI never has the denylist, so it can only run the built-in
+rules: run the scan with the denylist locally before publishing a branch.
+
+**What a report contains.** File path, rule identifier and a count (a content count below
+5 is shown as `<5`; path rules flag a file and carry no count). A matched
+value, a line or a snippet is never printed, logged or written, and denylist
+entries are named only by line number. The tests assert this with sentinel
+strings.
+
+**What it cannot do.** It finds what its patterns and the denylist describe. It
+cannot recognise arbitrary personal data, it does not read binary files, and it
+does not scan Git history (rule 8 above still applies). A clean result is not a
+guarantee that nothing sensitive is present.
+
 ## Limits of `.gitignore`
 
 `.gitignore` prevents untracked files from being added. It does **not**:

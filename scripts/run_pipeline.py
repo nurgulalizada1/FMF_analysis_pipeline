@@ -74,6 +74,10 @@ HERE = Path(__file__).resolve().parent
 STAGES = sorted(p for p in HERE.glob("[0-9][0-9]_*.py"))
 MARKER = ".mefv-output"
 MANIFEST_NAME = "run_manifest.json"
+#: Written into every output directory when a stage fails, so that files left from an
+#: earlier run are not mistaken for the results of this one. Removed at the start of the
+#: next run and never collected as an output.
+FAILED_NAME = "RUN_FAILED_outputs_are_not_current.txt"
 MANIFEST_VERSION = 2
 
 
@@ -88,12 +92,13 @@ def artifact_dirs() -> list[Path]:
 
 
 def intermediate_files() -> list[Path]:
-    return [config.PATIENTS, config.VARIANTS, config.ANNOTATIONS_GENERATED, config.DICTIONARY]
+    return [config.PATIENTS, config.VARIANTS, config.VALIDATION_REPORT,
+            config.ANNOTATIONS_GENERATED, config.DICTIONARY]
 
 
 def _is_output(f: Path, manifest: Path) -> bool:
-    return (f.is_file() and not f.name.startswith(".") and f.name != MANIFEST_NAME
-            and f.resolve() != manifest.resolve())
+    return (f.is_file() and not f.name.startswith(".")
+            and f.name not in (MANIFEST_NAME, FAILED_NAME) and f.resolve() != manifest.resolve())
 
 
 def collect(directories: list[Path], manifest: Path, since: float | None
@@ -146,6 +151,22 @@ def clean_outputs(directories: list[Path]) -> None:
                                 "--clean empties it.\n")
 
 
+def clear_failure_notes(directories: list[Path]) -> None:
+    for d in directories:
+        (d / FAILED_NAME).unlink(missing_ok=True)
+
+
+def write_failure_notes(directories: list[Path], stage: str) -> None:
+    """Say, next to any leftover files, that this run failed and they are not its results."""
+    text = (f"The run failed at {stage}. Files in this directory were NOT produced by a complete\n"
+            "run of the current inputs: any that are here are left over from an earlier run or\n"
+            "from stages that finished before the failure. Do not use them as results.\n"
+            "Fix the problem and run scripts/run_pipeline.py --clean.\n")
+    for d in directories:
+        d.mkdir(parents=True, exist_ok=True)
+        (d / FAILED_NAME).write_text(text)
+
+
 def mark(directories: list[Path]) -> None:
     for d in directories:
         if not d.exists():
@@ -195,7 +216,19 @@ def main() -> int:
     ap.add_argument("--manifest", default=None, help="where to write the run manifest")
     ap.add_argument("--clean", action="store_true",
                     help="empty the output directories first (full runs only)")
+    ap.add_argument("--accept-reviewed-findings", default=None, metavar="RULES",
+                    help="comma-separated blocking validation rules (V5, V6a, V6b, V7) the data "
+                         "owner has seen; passed to stage 01 as MEFV_ACCEPT_REVIEWED_FINDINGS. "
+                         "This does NOT release the run")
+    ap.add_argument("--owner-disposition", default=None, metavar="FILE",
+                    help="private JSON file recording the owner's explicit disposition of each "
+                         "blocking finding, stored outside the repository; passed to stage 01 "
+                         "as MEFV_OWNER_DISPOSITION")
     args = ap.parse_args()
+    if args.accept_reviewed_findings is not None:
+        os.environ["MEFV_ACCEPT_REVIEWED_FINDINGS"] = args.accept_reviewed_findings
+    if args.owner_disposition is not None:
+        os.environ["MEFV_OWNER_DISPOSITION"] = args.owner_disposition
 
     stages = STAGES
     partial = bool(args.only or args.start)
@@ -215,6 +248,10 @@ def main() -> int:
     else:
         mark(outputs)
 
+    # Only a full run regenerates every output directory, so only it may withdraw an earlier
+    # failure marker. A partial run does not show the other directories to be current.
+    if not partial:
+        clear_failure_notes(outputs)
     config.pin_build_timestamp()
 
     started = time.time()
@@ -227,6 +264,7 @@ def main() -> int:
                         "seconds": round(time.monotonic() - t0, 2)})
         if proc.returncode != 0:
             print(f"stage {stage.name} failed with code {proc.returncode}", file=sys.stderr)
+            write_failure_notes(outputs, stage.name)
             break
 
     # Two seconds of slack absorb coarse file-system timestamps.
@@ -250,6 +288,9 @@ def main() -> int:
                 "source_date_epoch": os.environ.get("SOURCE_DATE_EPOCH"),
             },
             "stages": [{"stage": r["stage"], "returncode": r["returncode"]} for r in results],
+            # true only for a full run in which every stage succeeded
+            "run_complete": (not partial) and bool(results)
+                            and all(r["returncode"] == 0 for r in results),
         },
         "execution": {
             "note": "Non-deterministic or machine-specific; excluded from "

@@ -31,6 +31,16 @@ does not call variants from sequence data - and, in nine ordered stages:
 The numeric order is the execution order. Stage 02 builds the dictionary that
 stages 03, 08 and 09 read.
 
+Stage 01 first validates the raw tables against a catalogue of rules
+([`docs/validation.md`](docs/validation.md)). Every later frequency uses an
+eligibility-aware denominator built from the laboratory's `exons_tested`
+record ([`docs/eligibility.md`](docs/eligibility.md)): individuals are
+`detected`, `not_detected`, `not_tested` or `undetermined`, and a frequency
+with nobody eligible is NaN, never zero.
+
+**This is a reproducible computational research pipeline. It is not clinically
+validated software and assigns no pathogenicity classification.**
+
 ## Public software, private study
 
 The repository holds generic software. Everything that describes a particular
@@ -49,6 +59,9 @@ setting is validated when it is read, and a missing or malformed setting stops
 the pipeline with an error naming it. See
 [`docs/configuration.md`](docs/configuration.md) for every setting and
 [`docs/privacy_policy.md`](docs/privacy_policy.md) for what may be published.
+Stage 01 validates the raw tables before building anything; the rules, the
+blocking policy and the diagnostic-only mode are in
+[`docs/validation.md`](docs/validation.md).
 
 **This repository contains no patient data and no study results.** Every
 tracked file must be on [`release_allowlist.txt`](release_allowlist.txt), which
@@ -123,6 +136,17 @@ python scripts/run_pipeline.py --clean     # all stages, fresh output directorie
 python scripts/run_pipeline.py --from 03   # from stage 03 onwards
 ```
 
+Stage 01 stops with exit code 2 on structural defects, and on exact duplicate
+rows, conflicting genotypes or variant labels that differ by case or whitespace
+until the owner has recorded an explicit disposition for each in a private file
+outside the repository (`--owner-disposition`). Naming a rule with
+`--accept-reviewed-findings` only marks it as seen and releases nothing.
+Nothing is ever merged, normalised or deleted automatically
+([`docs/validation.md`](docs/validation.md)). Before
+publishing anything, run `python scripts/check_privacy.py` locally with a
+private denylist kept outside the repository
+([`docs/privacy_policy.md`](docs/privacy_policy.md)).
+
 | Variable | Default | Contents |
 | --- | --- | --- |
 | `MEFV_RAW_AUG`, `MEFV_RAW_VARIANTS`, `MEFV_RAW_PATIENTS` | `data/raw/method.csv`, `variants.csv`, `patients.csv` | laboratory export (stage 01 input) |
@@ -136,6 +160,9 @@ python scripts/run_pipeline.py --from 03   # from stage 03 onwards
 | `MEFV_TABLES`, `MEFV_FIGURES`, `MEFV_ACMG` | `results/tables`, `results/figures`, `results/classification` | outputs |
 | `MEFV_RUN_MANIFEST` | next to the tables directory | run manifest |
 | `MEFV_BOOTSTRAP_REPLICATES` | `2000` | bootstrap replicates for D′ intervals |
+| `MEFV_ACCEPT_REVIEWED_FINDINGS` | none | comma-separated blocking rule IDs marked as seen (does not release the run) |
+| `MEFV_OWNER_DISPOSITION` | none | private JSON file recording the owner's disposition of each blocking finding; must be outside the repository |
+| `MEFV_PRIVATE_DENYLIST` | none | private denylist for `check_privacy.py`; must be outside the repository |
 
 ---
 
@@ -163,18 +190,23 @@ contains.
 make check               # lint and the full test suite (about 40 s; the two
                          # end-to-end runs take most of it)
 make test-fast           # everything except the end-to-end integration tests
+make privacy-check       # scan for material that should not be published
 make demo-check          # the demonstration, twice, with a determinism check
 make clean-clone-check   # all of the above from a fresh clone and virtualenv
 ```
 
 The tests need no study data. They cover the statistical functions against
 independent reference values, configuration and reference-data validation,
-the annotation merge rules, the regression tool's precision, the synthetic
-generator's independence, the public-release allowlist and private-path
-exclusions, and all nine stages end to end on synthetic data, run twice into
-the same directory. Continuous integration
+the annotation merge rules, input validation (one test per rule, plus checks
+that no value reaches any output), hand-calculated denominators and the four
+eligibility statuses, statistical edge cases (monomorphic bootstrap replicates,
+missing and zero reference values, non-convergence), the privacy scanner
+(sentinel strings are detected and never reproduced), the regression tool's
+precision, the synthetic generator's independence, the public-release allowlist
+and private-path exclusions, and all nine stages end to end on synthetic data,
+run twice into the same directory. Continuous integration
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs lint, the tests
-and `make demo-check` on Python 3.11 and 3.13 for every push to any branch and
+the privacy scan (built-in rules) and `make demo-check` on Python 3.11 and 3.13 for every push to any branch and
 every pull request.
 
 ---
@@ -197,6 +229,11 @@ These are different claims and are reported separately.
   exactly one cell, from an exact old value to an exact new value, and must
   cite a recorded decision and its evidence status. The decisions behind the
   accepted differences are still awaiting second review.
+- **Study-data status of the remediation.** The eligibility model, validation
+  rules and statistical changes were tested on synthetic data only. They have
+  not been run on the study data, so no real-study result has been validated by
+  them, and the earlier cell-by-cell regression comparison no longer applies
+  to the changed outputs until the owner re-runs and reviews it.
 - **Scientific validity - not established.** None of the above shows that a
   classification, an assumption or an interpretation is correct. Variant
   classifications, biological conclusions and clinical interpretation require
@@ -236,7 +273,16 @@ Implementations are in [`src/mefv/statistics.py`](src/mefv/statistics.py).
 ```
 
 Known limitations are in [`docs/limitations.md`](docs/limitations.md); open
-work is in [`docs/development_status.md`](docs/development_status.md).
+work is in [`docs/development_status.md`](docs/development_status.md);
+decisions that belong to the data owner are in
+[`docs/owner_decisions.md`](docs/owner_decisions.md), and the status of each
+analytical element (verified, assumed, awaiting confirmation) in
+[`docs/scientific_audit.md`](docs/scientific_audit.md). Methods:
+[`docs/statistics.md`](docs/statistics.md),
+[`docs/acmg_provenance.md`](docs/acmg_provenance.md). Environment and
+determinism: [`docs/reproducibility.md`](docs/reproducibility.md). Privacy
+safeguards, including the scanner and the private denylist:
+[`docs/privacy_policy.md`](docs/privacy_policy.md).
 
 ---
 
